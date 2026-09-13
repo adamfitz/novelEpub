@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>NovelEpub</title>
+  <link rel="stylesheet" href="app.css"/>
+</head>
+<body>
+  <header class="app-header">
+    <img class="logo" src="../icons/icon48.png" alt=""/>
+    <div class="app-title">
+      <h1>NovelEpub</h1>
+      <span class="app-subtitle" id="extensionVersion">v0.1.0</span>
+    </div>
+    <span class="site-badge hidden" id="siteBadge"></span>
+  </header>
+
+  <div class="container">
+    <section class="card url-row">
+      <input id="urlInput" type="url" spellcheck="false"
+             placeholder="Paste a supported story or chapter URL…"/>
+      <button id="loadUrlBtn" class="btn primary">Load Story</button>
+    </section>
+
+    <main class="app-body">
+      <!-- unsupported site -->
+      <section class="card hidden" id="unsupportedSection">
+        <div class="card-title">Not a supported site</div>
+        <p class="muted" id="unsupportedMessage">No plugin matches this URL yet.</p>
+        <p class="muted small">Supported sites: <span id="supportedHosts"></span></p>
+      </section>
+
+      <!-- loading -->
+      <section class="card hidden" id="loadingSection">
+        <div class="spinner"></div>
+        <p class="muted">Detecting story…</p>
+      </section>
+
+      <!-- story info -->
+      <section class="card hidden" id="storySection">
+        <div class="story-row">
+          <img class="cover" id="coverImage" src="" alt=""/>
+          <div class="story-text">
+            <label for="titleInput">Title</label>
+            <input id="titleInput" type="text" spellcheck="false"/>
+            <label for="authorInput">Author</label>
+            <input id="authorInput" type="text" spellcheck="false"/>
+            <p class="chapter-count" id="chapterCount"></p>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="fetchChaptersBtn" class="btn primary">Fetch Chapters</button>
+        </div>
+      </section>
+
+      <!-- chapter selection -->
+      <section class="card hidden" id="chaptersSection">
+        <div class="card-row">
+          <span class="card-title" id="chapterListTitle">Chapters</span>
+          <button id="selectAll" class="btn mini">All</button>
+          <button id="selectNone" class="btn mini">None</button>
+          <button id="selectInvert" class="btn mini">Invert</button>
+        </div>
+        <div class="chapter-list" id="chapterList"></div>
+        <p class="muted small hint">
+          Downloads continue while you use other tabs — keep this tab open until it finishes.
+        </p>
+        <div class="actions">
+          <button id="createEpubBtn" class="btn primary" disabled>Create EPUB</button>
+        </div>
+      </section>
+
+      <!-- progress -->
+      <section class="card hidden" id="progressSection">
+        <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+        <p class="progress-text" id="progressText">Working…</p>
+      </section>
+
+      <!-- result -->
+      <section class="card hidden" id="resultSection">
+        <div class="card-title" id="resultTitle"></div>
+        <div class="result-text" id="resultMessage"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="../lib/jszip.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

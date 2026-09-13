@@ -1,0 +1,14 @@
+{
+  "name": "novel-epub",
+  "version": "0.1.0",
+  "description": "Browser extension that downloads web novels and packs them into properly structured EPUB files. Site plugins are the same concept as WebToEpub.",
+  "type": "module",
+  "scripts": {
+    "test": "node test/make-sample.js"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^24.1.3",
+    "jszip": "^3.10.2"
+  }
+}

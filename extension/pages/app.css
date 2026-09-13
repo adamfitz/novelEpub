@@ -1,0 +1,192 @@
+:root {
+  color-scheme: dark;
+  --bg: #171717;
+  --card: #1f1f1f;
+  --border: #2e2e2e;
+  --text: #e5e5e5;
+  --muted: #9a9a9a;
+  --accent: #f97316;
+  --accent-strong: #fdba74;
+  --danger: #ef4444;
+  --ok: #4ade80;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  background: #141414;
+}
+
+.logo { width: 30px; height: 30px; }
+
+.app-title h1 { font-size: 17px; margin: 0; }
+.app-subtitle { color: var(--muted); font-size: 12px; }
+
+.site-badge {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.15);
+  color: var(--accent-strong);
+  border: 1px solid rgba(249, 115, 22, 0.35);
+}
+
+.container {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+}
+
+.url-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.url-row input {
+  flex: 1;
+  background: #141414;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 13px;
+}
+.url-row input:focus { outline: none; border-color: var(--accent); }
+.url-row .btn { flex: 0 0 auto; padding: 9px 18px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.card-title { font-weight: 600; font-size: 14px; margin-bottom: 8px; display: inline-block; }
+
+.card-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.card-row .card-title { margin-bottom: 0; }
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.hidden { display: none !important; }
+
+.hint { margin: 8px 0 0; }
+
+.story-row { display: flex; gap: 16px; }
+.cover {
+  width: 110px;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #000;
+  flex: 0 0 auto;
+}
+.story-text { flex: 1; min-width: 0; }
+.story-text label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.story-text input {
+  width: 100%;
+  background: #141414;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+.chapter-count { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
+
+.actions { margin-top: 12px; display: flex; gap: 10px; }
+
+.btn {
+  flex: 1;
+  border: none;
+  border-radius: 9px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #2a2a2a;
+  color: var(--text);
+}
+.btn:hover:not(:disabled) { background: #343434; }
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: #ea6a10; }
+.btn.mini { flex: 0 0 auto; padding: 5px 12px; font-size: 12px; font-weight: 500; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.chapter-list {
+  max-height: 55vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+}
+.chapter-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chapter-list label:hover { background: #2a2a2a; }
+.chapter-list input { accent-color: var(--accent); flex: 0 0 auto; }
+.chapter-list .label { overflow: hidden; text-overflow: ellipsis; }
+
+.progress-track {
+  height: 10px;
+  background: #2a2a2a;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  transition: width 0.15s ease;
+}
+.progress-text { color: var(--muted); font-size: 12px; margin: 10px 0 0; word-break: break-word; }
+
+.result-text { color: var(--muted); font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+#resultSection.ok .card-title { color: var(--ok); }
+#resultSection.err .card-title { color: var(--danger); }
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #3a3a3a;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 10px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
