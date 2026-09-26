@@ -13,7 +13,7 @@
 
 import { Util } from "./Util.js";
 
-class ParserFactory {
+export class ParserFactory {
   constructor() {
     this.parsers = new Map();
     this.urlRules = [];

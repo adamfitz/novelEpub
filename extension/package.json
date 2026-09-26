@@ -4,7 +4,7 @@
   "description": "Browser extension that downloads web novels and packs them into properly structured EPUB files. Site plugins are the same concept as WebToEpub.",
   "type": "module",
   "scripts": {
-    "test": "node test/make-sample.js"
+    "test": "node --test test/core test/sites test/pages test/e2e"
   },
   "license": "MIT",
   "devDependencies": {

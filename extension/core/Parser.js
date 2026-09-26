@@ -1,6 +1,14 @@
 /*
-  Base class for site parsers.  New sites are added by subclassing this and
-  registering the subclass with ParserFactory, e.g.
+  Base class for site parsers.
+
+  This file is shared by every site plugin and therefore must stay free of any
+  one site's markup, URLs or API details.  Site specific behaviour is added by
+  subclassing, and site specific clutter is declared through the
+  contentSelectorsToRemove getter, never by editing this file.  That is what
+  lets one site plugin change without affecting any other.
+
+  New sites are added by subclassing this and registering the subclass with
+  ParserFactory, e.g.
 
       class MySiteParser extends Parser { ... }
       parserFactory.register("mysite.com", () => new MySiteParser());
@@ -198,6 +206,40 @@ export class Parser {
   // ---------------------------------------------------------------------------
 
   /**
+   * Site specific selectors to strip out of chapter content (ad slots,
+   * donation boxes, "novel-epub-exclude" markers, ...).
+   *
+   * The base class deliberately knows nothing about any one site's markup:
+   * returning a non empty list here is the only supported way for a site plugin
+   * to remove its own clutter, which keeps one site from being able to change
+   * what another site produces.
+   * @returns {string[]}
+   */
+  get contentSelectorsToRemove() {
+    return [];
+  }
+
+  /**
+   * Download one chapter and turn it into EPUB ready XHTML.
+   *
+   * The default implementation fetches the chapter's sourceUrl as an HTML page
+   * and hands the parsed Document to buildChapterContent().  A site whose
+   * chapters are delivered as JSON (or by any other non-HTML request) overrides
+   * this method instead, so that a plugin can control its own transport while
+   * sites that do serve HTML keep working unchanged.
+   *
+   * @param {object} chapter list entry, as returned by getChapterList()
+   * @param {object} [imageCollector] optional ImageCollector
+   * @returns {Promise<{xhtml: string, label: string}>}
+   */
+  async fetchChapter(chapter, imageCollector) { // eslint-disable-line no-unused-vars
+    const dom = await this.httpClient.fetchDom(chapter.sourceUrl, {
+      referer: this.tocUrl,
+    });
+    return this.buildChapterContent(dom, chapter, imageCollector);
+  }
+
+  /**
    * Turn the raw chapter page into a clean XHTML document fragment.
    * @param {Document} dom of the chapter page
    * @param {object} chapter  list entry, used for title resolution and source
@@ -245,9 +287,11 @@ export class Parser {
       img.removeAttribute("data-src");
       img.removeAttribute("data-lazy-src");
     }
-    // remove advertising / site nav container that sometimes wraps novel text
-    Util.removeElements(content.querySelectorAll(".novel-epub-exclude"));
-    Util.removeElementsBySelector(content, "div.ad, div.ad-container, .adsbygoogle");
+    // site specific clutter, contributed by the plugin rather than the core
+    const siteSelectors = this.contentSelectorsToRemove;
+    if (siteSelectors.length > 0) {
+      Util.removeElementsBySelector(content, siteSelectors.join(","));
+    }
     removeEmptyDivs(content);
     removeEmptyAttributes(content);
     removeEmptyWhiteSpaceNodes(content);

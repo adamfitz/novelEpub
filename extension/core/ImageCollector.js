@@ -68,10 +68,12 @@ export class ImageCollector {
       headers: { "Accept": "image/*" },
     });
     const blob = await response.blob();
-    let mediaType = blob.type || guessMediaType(url);
-    if (mediaType === "" || mediaType.startsWith("text/") || mediaType.includes("html")) {
-      mediaType = guessMediaType(url);
-    }
+    // Only trust the server's type when it really is an image.  Servers often
+    // answer application/octet-stream or text/html for a blocked/hotlinked
+    // request, and writing those into the OPF manifest would produce an
+    // invalid EPUB, so fall back to the file extension instead.
+    const declared = blob.type || "";
+    const mediaType = declared.startsWith("image/") ? declared : guessMediaType(url);
     return { blob, mediaType };
   }
 

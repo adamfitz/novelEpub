@@ -90,6 +90,33 @@ html, body {
   margin-bottom: 10px;
 }
 .card-row .card-title { margin-bottom: 0; }
+.spacer { flex: 1 1 auto; }
+
+.selection-count { color: var(--muted); font-size: 12px; }
+
+.range-row { flex-wrap: wrap; }
+.range-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.range-field span { white-space: nowrap; }
+.range-field input {
+  width: 92px;
+  background: #141414;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 13px;
+}
+.range-field input:focus { outline: none; border-color: var(--accent); }
+.range-field input.invalid { border-color: var(--danger); }
+.range-sep { color: var(--muted); font-size: 12px; }
+#rangeStatus { margin: 0 0 8px; }
+#rangeStatus.err { color: var(--danger); }
 
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
@@ -161,6 +188,24 @@ html, body {
 .chapter-list label:hover { background: #2a2a2a; }
 .chapter-list input { accent-color: var(--accent); flex: 0 0 auto; }
 .chapter-list .label { overflow: hidden; text-overflow: ellipsis; }
+
+/* A chapter that costs seals, so the reader can see why it starts unticked. */
+.badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #2a2a2a;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.badge.owned {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 .progress-track {
   height: 10px;

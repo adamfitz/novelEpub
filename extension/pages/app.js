@@ -18,6 +18,7 @@
 import { parserFactory } from "../sites/index.js";
 import { ImageCollector } from "../core/ImageCollector.js";
 import { EpubBuilder } from "../core/EpubBuilder.js";
+import { ChapterRange } from "../core/ChapterRange.js";
 import { Util } from "../core/Util.js";
 
 const $ = (id) => document.getElementById(id);
@@ -52,8 +53,15 @@ function wireButtons() {
     state.metaInfo.author = $("authorInput").value;
   });
   $("selectAll").addEventListener("click", setAllChecked);
+  $("selectFree").addEventListener("click", setAllChecked);
   $("selectNone").addEventListener("click", setAllChecked);
   $("selectInvert").addEventListener("click", invertChecked);
+  $("applyRange").addEventListener("click", applyRange);
+  for (const id of ["rangeFrom", "rangeTo"]) {
+    $(id).addEventListener("keydown", (event) => {
+      if (event.key === "Enter") applyRange();
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +122,14 @@ function resetForNewStory() {
   state.running = false;
   $("siteBadge").classList.add("hidden");
   $("chapterList").replaceChildren();
+  $("chapterNumbers").replaceChildren();
+  $("rangeFrom").value = "";
+  $("rangeTo").value = "";
+  $("rangeFrom").classList.remove("invalid");
+  $("rangeTo").classList.remove("invalid");
+  $("rangeStatus").textContent = "";
+  $("rangeStatus").classList.remove("err");
+  $("selectionCount").textContent = "";
   $("createEpubBtn").disabled = true;
   $("progressBar").style.width = "0%";
   showSection("");
@@ -147,8 +163,7 @@ async function onFetchChaptersClicked() {
     }
     renderChapterList();
     showSection("chaptersSection");
-    $("chapterListTitle").textContent = `${state.chapters.length} Chapters`;
-    $("createEpubBtn").disabled = false;
+    $("chapterListTitle").textContent = chapterListTitle();
   } catch (err) {
     showResult("err", "Failed to get chapters", err.message);
   } finally {
@@ -165,14 +180,52 @@ function renderChapterList() {
     const item = document.createElement("label");
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
-    checkbox.checked = true;
+    // A premium chapter costs the reader seals, so it is never ticked for them.
+    // Everything the story gives away is.
+    checkbox.checked = !chapter.isPremium;
     checkbox.dataset.index = String(index);
+    checkbox.addEventListener("change", updateSelectionState);
     const span = document.createElement("span");
     span.className = "label";
     span.textContent = label;
     item.append(checkbox, span);
+    const badge = premiumBadge(chapter);
+    if (badge != null) item.appendChild(badge);
     list.appendChild(item);
   });
+  renderChapterNumbers();
+  const full = ChapterRange.fullRange(state.chapters);
+  $("rangeFrom").value = full.from;
+  $("rangeTo").value = full.to;
+  $("rangeFrom").classList.remove("invalid");
+  $("rangeTo").classList.remove("invalid");
+  $("rangeStatus").textContent = "";
+  $("rangeStatus").classList.remove("err");
+  updateSelectionState();
+}
+
+/** "premium" on a chapter the account cannot read, "premium · owned" on one it can. */
+function premiumBadge(chapter) {
+  if (!chapter.isPremium) return null;
+  const badge = document.createElement("span");
+  badge.className = chapter.isUnlocked ? "badge owned" : "badge premium";
+  badge.textContent = chapter.isUnlocked ? "premium · owned" : "premium";
+  badge.title = chapter.isUnlocked
+    ? "Costs seals. This account has bought it, so it will download."
+    : "Costs seals and this account has not bought it. Ticking it will fail " +
+      "until it is bought in the site's own tab.";
+  return badge;
+}
+
+/** Offer the story's own chapter numbers as suggestions. */
+function renderChapterNumbers() {
+  const datalist = $("chapterNumbers");
+  datalist.replaceChildren();
+  for (const value of ChapterRange.numbers(state.chapters)) {
+    const option = document.createElement("option");
+    option.value = value;
+    datalist.appendChild(option);
+  }
 }
 
 function getSelectedChapters() {
@@ -185,21 +238,99 @@ function getSelectedChapters() {
   return selected;
 }
 
-function setAllChecked(event) {
-  const value = event.currentTarget.id === "selectAll";
-  for (let checkbox of $("chapterList").querySelectorAll("input[type='checkbox']")) {
-    checkbox.checked = value;
+/** Tick exactly the chapters the from/to inputs name, leaving the rest alone. */
+function applyRange() {
+  if (state.chapters.length === 0) return;
+  const result = ChapterRange.resolve(
+    state.chapters,
+    $("rangeFrom").value,
+    $("rangeTo").value
+  );
+
+  for (const [id, field] of [["rangeFrom", "from"], ["rangeTo", "to"]]) {
+    $(id).classList.toggle("invalid", result.invalidField === field);
   }
-  $("createEpubBtn").disabled = !value;
+
+  if (result.error != null) {
+    $("rangeStatus").textContent = result.error;
+    $("rangeStatus").classList.add("err");
+    return;
+  }
+
+  const wanted = new Set(result.chapters);
+  for (const checkbox of $("chapterList").querySelectorAll("input[type='checkbox']")) {
+    checkbox.checked = wanted.has(state.chapters[Number(checkbox.dataset.index)]);
+  }
+
+  // A range is a deliberate request, so it is allowed to include premium
+  // chapters - but the reader should know they just asked for 41 of them.
+  const premium = result.chapters.filter((chapter) => chapter.isPremium).length;
+  const notes = result.warnings.slice();
+  if (premium > 0) {
+    const owned = result.chapters.filter(
+      (chapter) => chapter.isPremium && chapter.isUnlocked
+    ).length;
+    notes.push(
+      `This range includes ${premium} premium chapter(s)` +
+      (owned > 0 ? `, ${owned} of which this account owns` : "") + "."
+    );
+  }
+
+  $("rangeStatus").classList.remove("err");
+  $("rangeStatus").textContent = notes.join(" ");
+  updateSelectionState();
+}
+
+/** "896 Chapters (855 free, 41 premium)", trimmed to just the free count. */
+function chapterListTitle() {
+  const total = state.chapters.length;
+  const premium = state.chapters.filter((chapter) => chapter.isPremium).length;
+  const free = total - premium;
+  if (premium === 0) return `${total} Chapters`;
+  return `${total} Chapters (${free} free, ${premium} premium)`;
+}
+
+/** "n of m selected", split so the premium ones among them are visible. */
+function updateSelectionState() {
+  const total = state.chapters.length;
+  const checked = $("chapterList").querySelectorAll("input[type='checkbox']:checked");
+  const count = checked.length;
+  if (total === 0) {
+    $("selectionCount").textContent = "";
+  } else if (count === 0) {
+    $("selectionCount").textContent = `none of ${total} selected`;
+  } else {
+    const premium = [...checked].filter(
+      (box) => state.chapters[Number(box.dataset.index)].isPremium
+    ).length;
+    $("selectionCount").textContent =
+      `${count} of ${total} selected` + (premium > 0 ? ` (${premium} premium)` : "");
+  }
+  $("createEpubBtn").disabled = count === 0 || state.running;
+}
+
+function setAllChecked(event) {
+  const id = event.currentTarget.id;
+  for (const box of $("chapterList").querySelectorAll("input[type='checkbox']")) {
+    const chapter = state.chapters[Number(box.dataset.index)];
+    if (id === "selectAll") {
+      box.checked = true;
+    } else if (id === "selectFree") {
+      // "Free only" unticks the premium chapters without touching the rest,
+      // which is the usual way back after selecting everything by accident.
+      box.checked = !chapter.isPremium;
+    } else {
+      box.checked = false;
+    }
+  }
+  updateSelectionState();
 }
 
 function invertChecked() {
-  let anyChecked = false;
   for (let checkbox of $("chapterList").querySelectorAll("input[type='checkbox']")) {
     checkbox.checked = !checkbox.checked;
-    anyChecked = anyChecked || checkbox.checked;
   }
-  $("createEpubBtn").disabled = !anyChecked;
+  updateSelectionState();
 }
 
 // ---------------------------------------------------------------------------
@@ -219,27 +350,39 @@ async function onCreateEpubClicked() {
   const errors = [];
   const imageCollector = new ImageCollector(parser.httpClient);
   const epubChapters = [];
+  let downloaded = 0;
 
   try {
     for (let i = 0; i < selected.length; ++i) {
       const chapter = selected[i];
       updateProgress(i, selected.length, `Chapter ${chapter.chapterNumber || (i + 1)} — ${chapter.sourceUrl}`);
       try {
-        const dom = await parser.httpClient.fetchDom(chapter.sourceUrl, {
-          referer: parser.tocUrl,
-        });
-        const { xhtml, label } = await parser.buildChapterContent(dom, chapter, imageCollector);
+        const { xhtml, label } = await parser.fetchChapter(chapter, imageCollector);
         epubChapters.push({
           path: `Text/${xhtmlFileName(i)}.xhtml`,
           label,
           xhtml,
           sourceUrl: chapter.sourceUrl,
         });
+        downloaded += 1;
       } catch (err) {
         errors.push(`Failed ${chapter.sourceUrl}: ${err.message}`);
         await createPlaceholderChapter(epubChapters, chapter, i, parser, imageCollector);
       }
       updateProgress(i + 1, selected.length, `Chapter ${chapter.chapterNumber || (i + 1)} of ${selected.length} downloaded`);
+    }
+
+    // Every chapter failed.  Packing a book whose every page says "this could
+    // not be downloaded" helps nobody, and saving it hides the real problem
+    // behind a file that looks like a success.
+    if (downloaded === 0) {
+      showResult(
+        "err",
+        "Nothing could be downloaded",
+        `All ${selected.length} chapter(s) failed, so no EPUB was saved.\n\n` +
+        errors.join("\n")
+      );
+      return;
     }
 
     updateProgress(selected.length, selected.length, "Downloading cover image…");
@@ -257,9 +400,13 @@ async function onCreateEpubClicked() {
     const fileName = parser.makeSaveAsFileName();
     saveBlob(blob, fileName);
 
-    let resultMessage = `EPUB saved as ${fileName} — ${epubChapters.length} chapter(s).`;
+    let resultMessage = `EPUB saved as ${fileName} — ${downloaded} chapter(s) downloaded`;
     if (errors.length > 0) {
-      resultMessage += `\n\n${errors.length} chapter(s) failed:\n` + errors.join("\n");
+      resultMessage += `, ${errors.length} failed`;
+      resultMessage += `.\n\nThe ${errors.length} failed chapter(s) are in the book as a placeholder page each, so the table of contents still lines up.\n\n`;
+      resultMessage += errors.join("\n");
+    } else {
+      resultMessage += ".";
     }
     showResult(
       errors.length > 0 ? "err" : "ok",
