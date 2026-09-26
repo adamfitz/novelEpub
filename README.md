@@ -17,6 +17,8 @@ class per site), the same concept as [WebToEpub](https://github.com/dtevik/WebTo
   a stylesheet, and one file per chapter with a correct table of contents.
 - Politeness delays and retries so a whole novel can be fetched without
   hammering the site.
+- Every site is an isolated plugin: a change to one site's code, fixtures or
+  tests cannot affect another site.
 
 ## Installing (unpacked extension)
 
@@ -35,17 +37,40 @@ class per site), the same concept as [WebToEpub](https://github.com/dtevik/WebTo
 You can also open the page directly and paste a story (or chapter) URL into the
 box at the top.
 
-## Running the offline test suite
+## Running the tests
 
     cd extension
     npm install
     npm test
 
-`npm test` runs `test/make-sample.js`, which exercises the whole pipeline
-against two saved example pages (in `context/`) with a stubbed `fetch()`, and
-validates the assembled EPUB (file ordering, XML well-formedness, manifest /
-spine / nav / ncx consistency, href resolution, UUID format). It writes a
-sample to `extension/out/sample.epub`. Requires Node 18+.
+`npm test` runs the built-in Node test runner (`node --test`, no test framework
+to install) over three suites:
+
+- `test/core/*.test.js` — unit tests for the shared modules: `Util`,
+  `HttpClient` (including its retry rules), `ParserFactory`, `Parser`
+  (metadata, cleaning, labels, XHTML output), `ImageCollector` and
+  `EpubBuilder`.
+- `test/sites/*.test.js` — one file per site plugin, run against that site's own
+  saved pages in `test/fixtures/<site>/`.
+- `test/e2e/pipeline.test.js` — the whole pipeline end to end with a stubbed
+  `fetch()`, then validates the assembled EPUB (mimetype first and stored,
+  XML well-formedness, manifest / spine / nav / ncx consistency, href
+  resolution, UUID format). It writes `extension/out/sample.epub` so you can
+  open the result in an EPUB reader.
+
+Nothing in the suite touches the network — `fetch()` is replaced per test file
+and the throttle/retry delays are stubbed out, so the whole run takes a couple
+of seconds.
+
+`test/sites/isolation.test.js` is an architectural guard: it reads the source
+tree and fails if a site folder imports another site folder, if `core/` imports
+from `sites/`, or if `core/` hard codes a site host name, CSS class or element
+id. If you add site-specific markup handling, put it in the site's own folder —
+that test will tell you if you slipped.
+
+If you add a test directory, add it to the `test` script in `package.json`.
+
+Requires Node 18+.
 
 ## Adding a new site
 
