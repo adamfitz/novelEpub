@@ -21,16 +21,34 @@
 
 "use strict";
 
-import { Parser } from "../core/Parser.js";
-import { Util } from "../core/Util.js";
-import { md5 } from "../core/md5.js";
+import { Parser } from "../../core/Parser.js";
+import { Util } from "../../core/Util.js";
+import { md5 } from "./md5.js";
 
 const CHAPTER_LIST_ENDPOINT = "/auth/manga-chapters";
 const CHAPTER_LIST_PAGE_LIMIT = 500;
+const SITE_ORIGIN = "https://roliascan.com";
+
+/*
+  Markup that belongs to roliascan.com only.  The base Parser class must never
+  hard code selectors from a single site, so everything site specific lives
+  here; a change to these strings cannot affect any other plugin.
+*/
+const CONTENT_SELECTORS_TO_REMOVE = [
+  ".novel-epub-exclude",
+  "div.ad",
+  "div.ad-container",
+  ".adsbygoogle",
+  ".rolia-ad-slot",
+];
 
 export class RoliaScansParser extends Parser {
   constructor(options = {}) {
     super({ name: "RoliaScans", minimumThrottle: 300, ...options });
+  }
+
+  get contentSelectorsToRemove() {
+    return CONTENT_SELECTORS_TO_REMOVE;
   }
 
   // ---------------------------------------------------------------------------
@@ -79,13 +97,13 @@ export class RoliaScansParser extends Parser {
       _t: token,
       _ts: String(timestamp),
     });
-    const url = new URL(CHAPTER_LIST_ENDPOINT, this.tocUrl || "https://roliascan.com/");
+    const url = new URL(CHAPTER_LIST_ENDPOINT, this.tocUrl || `${SITE_ORIGIN}/`);
     url.search = params.toString();
     return this.httpClient.fetchJson(url.href, {
       credentials: "include",
       headers: {
         "Accept": "application/json",
-        "Referer": this.tocUrl || "https://roliascan.com/",
+        "Referer": this.tocUrl || `${SITE_ORIGIN}/`,
       },
     });
   }
@@ -177,7 +195,7 @@ export class RoliaScansParser extends Parser {
     // https://roliascan.com/read/{slug}/ch{n}-{id}/  ->  https://roliascan.com/manga/{slug}/
     const match = String(url).match(/\/read\/([^/]+)\//);
     if (match) {
-      return `https://roliascan.com/manga/${match[1]}/`;
+      return `${SITE_ORIGIN}/manga/${match[1]}/`;
     }
     return url;
   }

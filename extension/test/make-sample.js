@@ -26,7 +26,7 @@ import { JSDOM } from "jsdom";
 import JSZip from "jszip";
 
 import { Util } from "../core/Util.js";
-import { RoliaScansParser } from "../sites/RoliaScansParser.js";
+import { RoliaScansParser } from "../sites/roliascan/RoliaScansParser.js";
 import { ImageCollector } from "../core/ImageCollector.js";
 import { EpubBuilder } from "../core/EpubBuilder.js";
 

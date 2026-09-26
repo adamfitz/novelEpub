@@ -49,15 +49,38 @@ sample to `extension/out/sample.epub`. Requires Node 18+.
 
 ## Adding a new site
 
-1. Create `extension/sites/YourSiteParser.js`:
+Each site is a self contained folder under `extension/sites/`. The rule is
+simple: **a change to one site must not be able to affect another**, so no site
+specific markup, URL or API detail may ever live in `core/`.
+
+1. Create a folder `extension/sites/yoursite/` containing `index.js`:
 
    ```js
-   import { Parser } from "../core/Parser.js";
-   import { parserFactory } from "../core/ParserFactory.js";
+   import { YourSiteParser } from "./YourSiteParser.js";
+
+   export const yoursite = {
+     name: "YourSite",
+     hostNames: ["yoursite.com"],
+     create(options = {}) {
+       return new YourSiteParser(options);
+     },
+   };
+   ```
+
+2. Create `extension/sites/yoursite/YourSiteParser.js`:
+
+   ```js
+   import { Parser } from "../../core/Parser.js";
 
    export class YourSiteParser extends Parser {
      constructor(options = {}) {
        super({ name: "YourSite", minimumThrottle: 300, ...options });
+     }
+
+     // strip this site's ad slots / donation boxes out of chapter content.
+     // Declare them here; never add them to core/Parser.js.
+     get contentSelectorsToRemove() {
+       return [".ad-slot", "div.ad"];
      }
 
      // 1. chapter list: returns [{ sourceUrl, chapterNumber, title }]
@@ -74,16 +97,26 @@ sample to `extension/out/sample.epub`. Requires Node 18+.
    }
    ```
 
-2. Register it in `extension/sites/index.js`:
+   Helpers that only this site needs (token hashes, API wrappers, selectors)
+   belong in the same folder — see `sites/roliascan/md5.js`, which is used only
+   by the roliascan plugin.
+
+3. Register it in `extension/sites/index.js`:
+
    ```js
-   import { YourSiteParser } from "./YourSiteParser.js";
-   parserFactory.register("yoursite.com", () => new YourSiteParser());
+   import { yoursite } from "./yoursite/index.js";
+   const SITES = [roliascanSite, yoursite];
    ```
-3. Grant the extension access in `extension/manifest.json`:
+
+4. Grant the extension access in `extension/manifest.json`:
+
    ```json
    "host_permissions": ["https://roliascan.com/*", "https://yoursite.com/*"]
    ```
-4. Reload the extension (`chrome://extensions` → Reload).
+
+5. Add a test under `test/sites/yoursite.test.js` with fixtures under
+   `test/fixtures/yoursite/`, then reload the extension
+   (`chrome://extensions` → Reload).
 
 `getChapterList(chapter sourceUrls)` can fetch anything you like (the UI
 supplies a `this.httpClient` with built-in rate limiting and retries);
@@ -98,19 +131,23 @@ handles cleaning, image localization, and XHTML generation.
                                passing it the active tab's URL
       pages/app.{html,css,js}  the download UI (runs in its own tab so the
                                download keeps running while you switch tabs)
-      core/
+      core/                    shared by every site - contains NO site specific code
         Util.js                DOMParser/XML/file helpers
         HttpClient.js          fetch wrapper (delay, retries, timeout)
         Parser.js              base plugin class (metadata, cleaning, XHTML)
         ParserFactory.js       hostname -> plugin registry
         ImageCollector.js      image download + localization into OEBPS/Images/
         EpubBuilder.js         assembles the EPUB 3 zip
-        md5.js                 dependency-free MD5 (roliascan API token)
-      sites/
-        index.js               registers every site plugin
-        RoliaScansParser.js    the roliascan.com plugin (uses the site's JSON
-                               chapter API + anti-scrape token)
-      test/make-sample.js      offline end-to-end verification
+      sites/                   one self contained folder per site
+        index.js               registry: imports each site's definition
+        roliascan/
+          index.js             site definition (hostNames + factory)
+          RoliaScansParser.js  markup + the site's JSON chapter API
+          md5.js               the site's anti-scrape token hash
+      test/
+        core/*.test.js         unit tests for core/ modules
+        sites/*.test.js        one test file per site, with its own fixtures
+        fixtures/<site>/       saved example pages for that site only
+        helpers/               jsdom setup, fixture loading, fake fetch
       lib/jszip.min.js         vendored JSZip
       icons/                   extension icons
-    context/                   saved example pages used by the tests
