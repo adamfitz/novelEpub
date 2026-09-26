@@ -127,6 +127,32 @@ describe("Util.toWellFormedXhtmlFragment", () => {
     const doc = `<?xml version="1.0"?><root>${fragment}</root>`;
     assert.ok(isWellFormedXml(doc), xmlParseError(doc));
   });
+
+  test("rewrites the HTML-only &nbsp; entity as a numeric reference", () => {
+    // innerHTML serializes U+00A0 as &nbsp;, which HTML defines and XML does
+    // not, so leaving it would make the chapter unparseable as XHTML
+    const dom = parse("<div><p>a\u00a0b</p></div>");
+    const fragment = Util.toWellFormedXhtmlFragment(dom.querySelector("div"));
+    assert.ok(!/&nbsp;/.test(fragment), "left an entity XML cannot resolve");
+    assert.match(fragment, /&#160;/);
+    const doc = `<?xml version="1.0"?><root>${fragment}</root>`;
+    assert.ok(isWellFormedXml(doc), xmlParseError(doc));
+  });
+
+  test("rewrites &nbsp; inside an attribute value too", () => {
+    const dom = parse("<div><p title='a\u00a0b'>x</p></div>");
+    const fragment = Util.toWellFormedXhtmlFragment(dom.querySelector("div"));
+    assert.ok(!/&nbsp;/.test(fragment));
+    const doc = `<?xml version="1.0"?><root>${fragment}</root>`;
+    assert.ok(isWellFormedXml(doc), xmlParseError(doc));
+  });
+
+  test("leaves the other XML entities alone", () => {
+    const dom = parse("<div><p>a &amp; b &lt; c</p></div>");
+    const fragment = Util.toWellFormedXhtmlFragment(dom.querySelector("div"));
+    assert.match(fragment, /&amp;/);
+    assert.match(fragment, /&lt;/);
+  });
 });
 
 describe("Util.makeChapterXhtml", () => {

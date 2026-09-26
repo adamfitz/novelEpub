@@ -17,10 +17,12 @@
 
 import { parserFactory } from "../core/ParserFactory.js";
 import { roliascanSite } from "./roliascan/index.js";
+import { fenrirealmSite } from "./fenrirealm/index.js";
 
 /** @type {Array<{name: string, hostNames: string[], create: function}>} */
 const SITES = [
   roliascanSite,
+  fenrirealmSite,
 ];
 
 for (const site of SITES) {

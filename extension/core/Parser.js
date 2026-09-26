@@ -220,6 +220,26 @@ export class Parser {
   }
 
   /**
+   * Download one chapter and turn it into EPUB ready XHTML.
+   *
+   * The default implementation fetches the chapter's sourceUrl as an HTML page
+   * and hands the parsed Document to buildChapterContent().  A site whose
+   * chapters are delivered as JSON (or by any other non-HTML request) overrides
+   * this method instead, so that a plugin can control its own transport while
+   * sites that do serve HTML keep working unchanged.
+   *
+   * @param {object} chapter list entry, as returned by getChapterList()
+   * @param {object} [imageCollector] optional ImageCollector
+   * @returns {Promise<{xhtml: string, label: string}>}
+   */
+  async fetchChapter(chapter, imageCollector) { // eslint-disable-line no-unused-vars
+    const dom = await this.httpClient.fetchDom(chapter.sourceUrl, {
+      referer: this.tocUrl,
+    });
+    return this.buildChapterContent(dom, chapter, imageCollector);
+  }
+
+  /**
    * Turn the raw chapter page into a clean XHTML document fragment.
    * @param {Document} dom of the chapter page
    * @param {object} chapter  list entry, used for title resolution and source

@@ -58,10 +58,34 @@
       <section class="card hidden" id="chaptersSection">
         <div class="card-row">
           <span class="card-title" id="chapterListTitle">Chapters</span>
+          <span class="selection-count" id="selectionCount"></span>
+          <div class="spacer"></div>
           <button id="selectAll" class="btn mini">All</button>
+          <button id="selectFree" class="btn mini">Free only</button>
           <button id="selectNone" class="btn mini">None</button>
           <button id="selectInvert" class="btn mini">Invert</button>
         </div>
+        <div class="card-row range-row">
+          <label class="range-field" for="rangeFrom">
+            <span>From</span>
+            <input id="rangeFrom" type="text" inputmode="text" spellcheck="false"
+                   autocomplete="off" list="chapterNumbers" placeholder="first"/>
+          </label>
+          <span class="range-sep">to</span>
+          <label class="range-field" for="rangeTo">
+            <span>To</span>
+            <input id="rangeTo" type="text" inputmode="text" spellcheck="false"
+                   autocomplete="off" list="chapterNumbers" placeholder="last"/>
+          </label>
+          <button id="applyRange" class="btn mini">Select Range</button>
+        </div>
+        <datalist id="chapterNumbers"></datalist>
+        <p class="muted small hint" id="rangeStatus" role="status"></p>
+        <p class="muted small hint">
+          Chapters that cost seals are listed but left unticked. Tick the ones you
+          have bought and they download with your existing site login. The
+          <em>To</em> box also accepts a number past the last chapter.
+        </p>
         <div class="chapter-list" id="chapterList"></div>
         <p class="muted small hint">
           Downloads continue while you use other tabs — keep this tab open until it finishes.

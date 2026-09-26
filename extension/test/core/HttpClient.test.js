@@ -74,6 +74,39 @@ describe("HttpClient.fetch", () => {
     );
   });
 
+  test("explains a 5xx as the site's own failure, not ours", async () => {
+    const { client } = clientWith([
+      { match: () => true, respond: () => errorResponse(500, "boom") },
+    ]);
+    await assert.rejects(
+      () => client.fetch("https://example.com/a"),
+      (err) => {
+        assert.match(err.message, /site's own server failed/);
+        assert.match(err.message, /not a problem with the extension/);
+        return true;
+      }
+    );
+  });
+
+  test("explains a 404 and a 429 and a 403 differently", async () => {
+    for (const [status, expected] of [
+      [404, /page is gone/],
+      [429, /rate limiting/],
+      [403, /require being signed in/],
+    ]) {
+      const { client } = clientWith([
+        { match: () => true, respond: () => errorResponse(status, "no") },
+      ]);
+      await assert.rejects(
+        () => client.fetch("https://example.com/a"),
+        (err) => {
+          assert.match(err.message, expected, `status ${status}`);
+          return true;
+        }
+      );
+    }
+  });
+
   test("does not retry a 4xx", async () => {
     const { client, fetchStub } = clientWith(
       [{ match: () => true, respond: () => errorResponse(404) }],

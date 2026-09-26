@@ -77,7 +77,7 @@ export class HttpClient {
       const response = await fetch(url, init);
       if (!response.ok) {
         throw new HttpError(
-          `HTTP ${response.status} for ${url}`,
+          `HTTP ${response.status}${reason(response.status)} for ${url}`,
           response.status,
           url
         );
@@ -113,4 +113,28 @@ export class HttpClient {
     const response = await this.fetch(url, options);
     return response.blob();
   }
+}
+
+/**
+ * A short explanation of a status code, so a failure says something useful.
+ *
+ * The point is to separate "the site is broken" from "this plugin asked for
+ * something wrong", because the fix for the user is completely different: a
+ * 5xx or 429 is worth retrying later and is never caused by the request, while
+ * a 403 usually means the site started requiring something from us.
+ */
+function reason(status) {
+  if (status === 401 || status === 403) {
+    return " (the site refused the request; it may now require being signed in)";
+  }
+  if (status === 404) {
+    return " (the page is gone; the site's layout or chapter list may have changed)";
+  }
+  if (status === 429) {
+    return " (the site is rate limiting; try again later)";
+  }
+  if (status >= 500) {
+    return " (the site's own server failed; this is not a problem with the extension, and it is usually temporary)";
+  }
+  return "";
 }

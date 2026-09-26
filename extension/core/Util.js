@@ -121,6 +121,10 @@ export const Util = {
       - HTML void elements must use the self closing <tag/> form.
       - and the ampersand that can legitimately appear in attribute values
         (hard to generate, but cheap to guard against).
+      - the HTML serializer writes U+00A0 as the named entity &nbsp;, which XML
+        does not define, so it becomes a numeric reference instead.  Without
+        this a single non-breaking space anywhere in a chapter makes the whole
+        file fail to parse as XHTML.
 
     The result is guaranteed to parse with DOMParser("application/xhtml+xml").
   */
@@ -138,6 +142,10 @@ export const Util = {
       }
       return `<img ${attrs.trim()}/>`;
     });
+    // &nbsp; is the only named entity the HTML serializer can emit that XML
+    // does not have; doing this after the void element pass keeps it away from
+    // the markup we have just rewritten.
+    fragment = fragment.replace(/&nbsp;/g, "&#160;");
 
     return fragment;
   },

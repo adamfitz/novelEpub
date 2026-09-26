@@ -83,7 +83,15 @@ export function createFetchStub(routes) {
   const fetchStub = async (rawUrl, init = {}) => {
     const url = new URL(String(rawUrl));
     const info = { headers: normalizeHeaders(init.headers) };
-    requests.push({ url, href: String(rawUrl), method: init.method || "GET", ...info });
+    // recorded because the default, "same-origin", sends no cookies at all on a
+    // cross site request, which is what a logged in reader's chapters need
+    requests.push({
+      url,
+      href: String(rawUrl),
+      method: init.method || "GET",
+      credentials: init.credentials || "same-origin",
+      ...info,
+    });
     for (const route of routes) {
       if (route.match(url, info)) {
         return route.respond(url, info);

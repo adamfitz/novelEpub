@@ -219,6 +219,47 @@ describe("Parser.buildChapterContent", () => {
   });
 });
 
+describe("Parser.fetchChapter", () => {
+  test("fetches the chapter page and builds it, with the toc url as referer", async () => {
+    const parser = new StoryParser();
+    parser.tocUrl = "https://example.com/novel/";
+    const requests = [];
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      return {
+        ok: true, status: 200,
+        async text() { return DIRTY_HTML; },
+      };
+    };
+    const { xhtml, label } = await parser.fetchChapter({
+      sourceUrl: "https://example.com/novel/chapter-1/", chapterNumber: "3", title: "Middle",
+    });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "https://example.com/novel/chapter-1/");
+    assert.equal(requests[0].init.headers["Referer"], "https://example.com/novel/");
+    assert.equal(label, "Chapter 3 - Middle");
+    assert.ok(isWellFormedXml(xhtml), xmlParseError(xhtml));
+  });
+
+  test("passes the image collector through to the build step", async () => {
+    const parser = new StoryParser();
+    globalThis.fetch = async () => ({ ok: true, status: 200, async text() { return DIRTY_HTML; } });
+    const seen = [];
+    await parser.fetchChapter(
+      { sourceUrl: "https://example.com/novel/chapter-1/", chapterNumber: "3" },
+      { collectImagesInDocument: async (content) => { seen.push(content); } }
+    );
+    assert.equal(seen.length, 1);
+  });
+
+  test("is the single seam a site plugin overrides to fetch JSON", async () => {
+    // the base class only knows how to fetch HTML; a site whose chapters are
+    // JSON replaces this method wholesale
+    assert.equal(typeof Parser.prototype.fetchChapter, "function");
+    assert.equal(Parser.prototype.fetchChapter.length, 2);
+  });
+});
+
 describe("Parser.getTocUrl", () => {
   test("defaults to the URL itself", () => {
     assert.equal(new StoryParser().getTocUrl("https://example.com/a"), "https://example.com/a");

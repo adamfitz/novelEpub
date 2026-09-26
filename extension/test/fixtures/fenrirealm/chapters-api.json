@@ -1,0 +1,281 @@
+[
+  {
+    "id": 12471,
+    "slug": "1",
+    "name": "Chapter 1 - Send Me to the Past",
+    "title": "Send Me to the Past",
+    "number": 1,
+    "part": null,
+    "type": "text",
+    "content_rating": null,
+    "content_warning": null,
+    "has_illustration": false,
+    "index": 0,
+    "group": null,
+    "locked": {
+      "price": 0,
+      "unlocked_at": "2025-02-24T21:46:04.000000Z",
+      "is_read_only": false
+    },
+    "bought": {
+      "wallet_type": null,
+      "amount": 0,
+      "bought_at": null
+    },
+    "user": {
+      "username": "Fenrirtl",
+      "name": "fenrirtl"
+    },
+    "bypass": false,
+    "created_at": "2025-01-17T01:11:56.000000Z",
+    "updated_at": "2025-06-26T13:03:34.000000Z"
+  },
+  {
+    "id": 12482,
+    "slug": "2",
+    "name": "Chapter 2 - Did You Push Me Away",
+    "title": "Did You Push Me Away",
+    "number": 2,
+    "part": null,
+    "type": "text",
+    "content_rating": null,
+    "content_warning": null,
+    "has_illustration": false,
+    "index": 1,
+    "group": null,
+    "locked": {
+      "price": 0,
+      "unlocked_at": "2025-02-24T21:46:04.000000Z",
+      "is_read_only": false
+    },
+    "bought": {
+      "wallet_type": null,
+      "amount": 0,
+      "bought_at": null
+    },
+    "user": {
+      "username": "Fenrirtl",
+      "name": "fenrirtl"
+    },
+    "bypass": false,
+    "created_at": "2025-01-17T01:11:57.000000Z",
+    "updated_at": "2025-06-26T13:03:34.000000Z"
+  },
+  {
+    "id": 12470,
+    "slug": "3",
+    "name": "Chapter 3 - What Is the Wish",
+    "title": "What Is the Wish",
+    "number": 3,
+    "part": null,
+    "type": "text",
+    "content_rating": null,
+    "content_warning": null,
+    "has_illustration": false,
+    "index": 2,
+    "group": null,
+    "locked": {
+      "price": 0,
+      "unlocked_at": "2025-02-24T21:46:04.000000Z",
+      "is_read_only": false
+    },
+    "bought": {
+      "wallet_type": null,
+      "amount": 0,
+      "bought_at": null
+    },
+    "user": {
+      "username": "Fenrirtl",
+      "name": "fenrirtl"
+    },
+    "bypass": false,
+    "created_at": "2025-01-17T01:11:56.000000Z",
+    "updated_at": "2025-06-26T13:03:34.000000Z"
+  },
+  {
+    "id": 251011,
+    "slug": "894",
+    "name": " Chapter 894",
+    "title": "Since He Didn’t Know What They’d Like, He Prepared Everything",
+    "number": 894,
+    "part": null,
+    "type": "text",
+    "content_rating": null,
+    "content_warning": null,
+    "has_illustration": false,
+    "index": 893,
+    "group": null,
+    "locked": {
+      "price": 15,
+      "unlocked_at": null,
+      "is_read_only": false
+    },
+    "bought": {
+      "wallet_type": "rune",
+      "amount": 15,
+      "bought_at": "2026-06-23T12:51:28.000000Z"
+    },
+    "user": {
+      "username": "Fenrirtl",
+      "name": "fenrirtl"
+    },
+    "bypass": false,
+    "created_at": "2026-06-23T08:39:28.000000Z",
+    "updated_at": "2026-06-23T08:39:28.000000Z"
+  },
+  {
+    "id": 251012,
+    "slug": "895",
+    "name": " Chapter 895",
+    "title": "Are You Trying to Compete with Your Granddaughter?",
+    "number": 895,
+    "part": null,
+    "type": "text",
+    "content_rating": null,
+    "content_warning": null,
+    "has_illustration": false,
+    "index": 894,
+    "group": null,
+    "locked": {
+      "price": 15,
+      "unlocked_at": null,
+      "is_read_only": false
+    },
+    "bought": {
+      "wallet_type": "rune",
+      "amount": 15,
+      "bought_at": "2026-06-23T13:03:17.000000Z"
+    },
+    "user": {
+      "username": "Fenrirtl",
+      "name": "fenrirtl"
+    },
+    "bypass": false,
+    "created_at": "2026-06-23T08:39:28.000000Z",
+    "updated_at": "2026-06-23T08:39:28.000000Z"
+  },
+  {
+    "id": 251013,
+    "slug": "896",
+    "name": " Chapter 896",
+    "title": "Please Send Me to the Past",
+    "number": 896,
+    "part": null,
+    "type": "text",
+    "content_rating": null,
+    "content_warning": null,
+    "has_illustration": false,
+    "index": 895,
+    "group": null,
+    "locked": {
+      "price": 15,
+      "unlocked_at": null,
+      "is_read_only": false
+    },
+    "bought": {
+      "wallet_type": "rune",
+      "amount": 15,
+      "bought_at": "2026-06-23T09:22:17.000000Z"
+    },
+    "user": {
+      "username": "Fenrirtl",
+      "name": "fenrirtl"
+    },
+    "bypass": false,
+    "created_at": "2026-06-23T08:39:34.000000Z",
+    "updated_at": "2026-06-23T08:39:34.000000Z"
+  },
+  {
+    "id": 990001,
+    "slug": "1",
+    "name": "Chapter 1.5 - Interlude",
+    "title": "Interlude",
+    "number": 1,
+    "part": 5,
+    "type": "text",
+    "has_illustration": false,
+    "index": 0,
+    "group": null,
+    "locked": {
+      "price": 0,
+      "unlocked_at": "2025-02-24T21:46:04.000000Z",
+      "is_read_only": false
+    },
+    "bought": {
+      "wallet_type": null,
+      "amount": 0,
+      "bought_at": null
+    },
+    "user": {
+      "username": "Fenrirtl",
+      "name": "fenrirtl"
+    },
+    "bypass": false,
+    "created_at": "2025-01-17T01:11:56.000000Z",
+    "updated_at": "2025-06-26T13:13:34.000Z"
+  },
+  {
+    "id": 990002,
+    "slug": "12",
+    "name": "Chapter 12 - Extra",
+    "title": "Extra",
+    "number": 12,
+    "part": null,
+    "type": "text",
+    "has_illustration": false,
+    "index": 0,
+    "group": {
+      "id": 7,
+      "slug": "bonus",
+      "name": "Bonus"
+    },
+    "locked": {
+      "price": 0,
+      "unlocked_at": "2025-02-24T21:46:04.000000Z",
+      "is_read_only": false
+    },
+    "bought": {
+      "wallet_type": null,
+      "amount": 0,
+      "bought_at": null
+    },
+    "user": {
+      "username": "Fenrirtl",
+      "name": "fenrirtl"
+    },
+    "bypass": false,
+    "created_at": "2025-01-17T01:11:56.000000Z",
+    "updated_at": "2025-06-26T13:13:34.000Z"
+  },
+  {
+    "id": 237314,
+    "slug": "857",
+    "name": " Chapter 857",
+    "title": "What Kind of Drinker Worries About a Hangover",
+    "number": 857,
+    "part": null,
+    "type": "text",
+    "content_rating": null,
+    "content_warning": null,
+    "has_illustration": false,
+    "index": 856,
+    "group": null,
+    "locked": {
+      "price": 15,
+      "unlocked_at": null,
+      "is_read_only": false
+    },
+    "bought": {
+      "wallet_type": null,
+      "amount": 0,
+      "bought_at": null
+    },
+    "user": {
+      "username": "<site user>",
+      "name": "<site user>"
+    },
+    "bypass": false,
+    "created_at": "2026-06-04T14:34:50.000000Z",
+    "updated_at": "2026-06-04T14:34:50.000000Z"
+  }
+]

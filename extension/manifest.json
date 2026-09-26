@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "NovelEpub",
   "version": "0.1.0",
-  "description": "Download web novels and pack them into a properly structured EPUB. Supports roliascan.com (more sites can be added as plugins).",
+  "description": "Download web novels and pack them into a properly structured EPUB. Supports roliascan.com and fenrirealm.com (more sites can be added as plugins).",
   "action": {
     "default_title": "NovelEpub",
     "default_icon": {
@@ -20,5 +20,5 @@
     "128": "icons/icon128.png"
   },
   "permissions": ["activeTab"],
-  "host_permissions": ["https://roliascan.com/*"]
+  "host_permissions": ["https://roliascan.com/*", "https://fenrirealm.com/*"]
 }
