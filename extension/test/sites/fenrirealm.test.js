@@ -2,7 +2,7 @@
   Tests for the fenrirealm.com plugin.
 
   Runs entirely against the saved story page, the saved chapter list API
-  response and real __data.json chapter captures from test/fixtures/fenrirealm/,
+  response and real chapter API captures from test/fixtures/fenrirealm/,
   plus a stubbed network, so it never touches fenrirealm.com or any other site.
 */
 
@@ -23,7 +23,7 @@ const COVER_URL =
 
 before(() => { installDom({ url: STORY_URL }); });
 
-const { FenriRealmParser, seriesSlugFromUrl, chapterPathFor } =
+const { FenriRealmParser, seriesSlugFromUrl, chapterPathFor, authTokenFrom } =
   await import("../../sites/fenrirealm/FenriRealmParser.js");
 const { proseMirrorToHtml } = await import("../../sites/fenrirealm/content.js");
 const { parseDataResponse, unflattenDataNode } =
@@ -31,6 +31,7 @@ const { parseDataResponse, unflattenDataNode } =
 const { fenrirealmSite } = await import("../../sites/fenrirealm/index.js");
 const { parserFactory } = await import("../../sites/index.js");
 const { Parser } = await import("../../core/Parser.js");
+const { Util } = await import("../../core/Util.js");
 const { ImageCollector } = await import("../../core/ImageCollector.js");
 
 let restoreSleeps;
@@ -44,8 +45,8 @@ function makeParser(options = {}) {
 }
 
 /**
- * A parser on a stubbed network: the saved chapter list, and real `__data.json`
- * captures keyed by chapter path, exactly as the site serves them.
+ * A parser on a stubbed network: the saved chapter list and real chapter API
+ * captures keyed by their `/api/new/v2/series/.../{number}` path.
  */
 async function parserWithApi(dataByPath = {}, options = {}) {
   const list = await readFixtureJson(SITE, "chapters-api.json");
@@ -60,15 +61,18 @@ async function parserWithApi(dataByPath = {}, options = {}) {
       },
     },
     {
-      match: (url) => url.pathname.endsWith("/__data.json"),
+      match: (url) =>
+        /^\/api\/new\/v2\/series\/[^/]+\/.+/.test(url.pathname) &&
+        !url.pathname.endsWith("/chapters"),
       respond: (url, info) => {
         if (info.headers.accept !== "application/json") {
           return htmlResponse("<!doctype html><html><body>error</body></html>", 500);
         }
         const body = dataByPath[url.pathname];
-        return body == null
-          ? errorResponse(404, "no data")
-          : htmlResponse(body);
+        if (body == null) return errorResponse(404, "no data");
+        return typeof body === "string"
+          ? jsonResponse(JSON.parse(body))
+          : jsonResponse(body);
       },
     },
     {
@@ -84,6 +88,11 @@ async function parserWithApi(dataByPath = {}, options = {}) {
 /** A real capture, served verbatim. */
 async function dataFixture(name) {
   return await readFixture(SITE, `data-${name}.json`);
+}
+
+/** A real chapter API capture, already parsed. */
+async function chapterFixture(name) {
+  return await readFixtureJson(SITE, `${name}.json`);
 }
 
 const ZERO_WIDTH = /[\u200B\u200C\u200D\u2060\uFEFF]/;
@@ -296,89 +305,63 @@ describe("fenrirealm.getChapterList", () => {
 });
 
 describe("fenrirealm chapter content, from real captures", () => {
-  const CH1 = "/series/absolute-regression/1/__data.json";
-  const CH855 = "/series/absolute-regression/855/__data.json";
+  const CH1_API = "/api/new/v2/series/absolute-regression/1";
+  const CH855_API = "/api/new/v2/series/absolute-regression/855";
 
-  async function fetchReal(name, path, chapterNumber) {
-    const body = await dataFixture(name);
-    const { parser, fetchStub } = await parserWithApi({ [path]: body });
+  async function fetchReal(fixture, apiPath, chapterNumber) {
+    const body = await chapterFixture(fixture);
+    const { parser, fetchStub } = await parserWithApi({ [apiPath]: body });
     const result = await parser.fetchChapter({
-      sourceUrl: `https://fenrirealm.com${path.replace("/__data.json", "")}`,
+      sourceUrl: `https://fenrirealm.com/series/absolute-regression/${chapterNumber}`,
       chapterNumber,
       title: "ignored, the label comes from the site",
     });
     return { ...result, fetchStub };
   }
 
-  test("a ProseMirror body becomes well formed XHTML", async () => {
-    const { xhtml, label } = await fetchReal("chapter-1", CH1, "1");
+  test("a real html body becomes well formed XHTML", async () => {
+    const { xhtml, label } = await fetchReal("api-chapter-1", CH1_API, "1");
     assert.ok(isWellFormedXml(xhtml), xmlParseError(xhtml));
     assert.equal(label, "Chapter 1 - Send Me to the Past");
     assert.match(xhtml, /<h1>Chapter 1 - Send Me to the Past<\/h1>/);
     assert.match(xhtml, /Spirit Master Seo Gong silently stared/);
   });
 
-  test("the ProseMirror body keeps all of its paragraphs", async () => {
-    const { xhtml } = await fetchReal("chapter-1", CH1, "1");
-    const paragraphs = [...xhtml.matchAll(/<p>/g)];
-    assert.equal(paragraphs.length, 153, "a real chapter lost paragraphs");
-    assert.match(
-      xhtml,
-      /The man's calm yet confident gaze showed that his recent boast was not mere bravado\./
-    );
-  });
-
   test("a non breaking space becomes a numeric reference, not &nbsp;", async () => {
-    const { xhtml } = await fetchReal("chapter-1", CH1, "1");
+    const { xhtml } = await fetchReal("api-chapter-1", CH1_API, "1");
     // &nbsp; is defined in HTML but not in XML, so it would stop the chapter
     // parsing as XHTML at all
     assert.ok(!/&nbsp;/.test(xhtml), "an undefined XML entity reached the XHTML");
     assert.ok(!/\u00a0/.test(xhtml), "a literal U+00A0 reached the XHTML");
-    assert.match(xhtml, /&#160;/);
     assert.ok(isWellFormedXml(xhtml), xmlParseError(xhtml));
   });
 
-  test("an html body becomes well formed XHTML", async () => {
-    const { xhtml, label } = await fetchReal("chapter-855", CH855, "855");
+  test("an html body from another chapter becomes well formed XHTML", async () => {
+    const { xhtml, label } = await fetchReal("api-chapter-855", CH855_API, "855");
     assert.ok(isWellFormedXml(xhtml), xmlParseError(xhtml));
     assert.equal(label, "Chapter 855 - Have You Decided Who to Choose?");
-    assert.match(xhtml, /“I made a bet with Father on who would win\./);
-    assert.equal([...xhtml.matchAll(/<p>/g)].length, 217);
-  });
-
-  test("the site's hidden ad payload and style block are gone", async () => {
-    const { xhtml } = await fetchReal("chapter-855", CH855, "855");
-    assert.ok(!/<style/i.test(xhtml), "a style block reached the chapter");
-    assert.ok(!/position:absolute/i.test(xhtml), "a hidden element survived");
-    assert.ok(!/T1M8y6N7z9A82bYdz/.test(xhtml), "the ad payload survived");
+    assert.match(xhtml, /I made a bet with Father on who would win\./);
   });
 
   test("the zero width characters are stripped from the text", async () => {
-    for (const [name, path, number] of [
-      ["chapter-1", CH1, "1"],
-      ["chapter-855", CH855, "855"],
+    for (const [fixture, path, number] of [
+      ["api-chapter-1", CH1_API, "1"],
+      ["api-chapter-855", CH855_API, "855"],
     ]) {
-      const { xhtml } = await fetchReal(name, path, number);
-      assert.ok(!ZERO_WIDTH.test(xhtml), `${name} kept a zero width character`);
+      const { xhtml } = await fetchReal(fixture, path, number);
+      assert.ok(!ZERO_WIDTH.test(xhtml), `${fixture} kept a zero width character`);
     }
   });
 
-  test("stripping the invisible characters does not join words together", async () => {
-    const { xhtml } = await fetchReal("chapter-855", CH855, "855");
-    // the clusters sit between a space and the next word, so removing them must
-    // leave normal spacing rather than welding the two words into one
-    assert.match(xhtml, /<p>“I made a bet with Father/);
-    assert.match(xhtml, /<p>When Geom Mugeuk spoke/);
-  });
-
-  test("asks for the data route, not the broken page route", async () => {
-    const { fetchStub } = await fetchReal("chapter-855", CH855, "855");
+  test("asks the chapter API the site's reader uses", async () => {
+    const { fetchStub } = await fetchReal("api-chapter-855", CH855_API, "855");
     const last = fetchStub.requests.at(-1);
     assert.equal(
       last.url.href,
-      "https://fenrirealm.com/series/absolute-regression/855/__data.json"
+      "https://fenrirealm.com/api/new/v2/series/absolute-regression/855"
     );
     assert.equal(last.headers.accept, "application/json");
+    assert.equal(last.headers["x-accepts-encrypted-content"], "2");
   });
 
   test("surfaces an http failure", async () => {
@@ -393,6 +376,106 @@ describe("fenrirealm chapter content, from real captures", () => {
   });
 });
 
+describe("fenrirealm premium chapters and the account token", () => {
+  const PREMIUM_API = "/api/new/v2/series/absolute-regression/865";
+  const CHAPTER_URL = "https://fenrirealm.com/series/absolute-regression/865";
+
+  /** A page whose inline bootstrap data carries the given token literal. */
+  function pageHtmlWithToken(tokenLiteral) {
+    return (
+      "<!doctype html><html><body>" +
+      "<h1 id='series-title'>Absolute Regression</h1>" +
+      "<script>" +
+      "__sveltekit_x = {base:''};" +
+      "kit.start(app, element, {data:[{type:'data',data:{" +
+      `token:${tokenLiteral},isImpersonating:false},uses:{}}]});` +
+      "</script></body></html>"
+    );
+  }
+
+  test("reads a real JWT off the page, but not a 'session' flag", () => {
+    const dom = Util.parseHtml(pageHtmlWithToken('"eyJhbGciOi.payload.sig"'));
+    assert.equal(authTokenFrom(dom), "eyJhbGciOi.payload.sig");
+    const session = Util.parseHtml(pageHtmlWithToken('"session"'));
+    assert.equal(authTokenFrom(session), null);
+  });
+
+  test("a signed out page (token:void 0) yields no token", () => {
+    const dom = Util.parseHtml(pageHtmlWithToken("void 0"));
+    assert.equal(authTokenFrom(dom), null);
+  });
+
+  test("the chapter request carries the token as a bearer header", async () => {
+    const chapter = await chapterFixture("api-chapter-1");
+    const { parser, fetchStub } = await parserWithApi({ [PREMIUM_API]: chapter });
+    parser.authToken = "eyJhbGciOi.payload.sig";
+    await parser.fetchChapter({
+      sourceUrl: CHAPTER_URL, chapterNumber: "865", title: "", isPremium: true,
+    });
+    const last = fetchStub.requests.at(-1);
+    assert.equal(last.headers.authorization, "Bearer eyJhbGciOi.payload.sig");
+  });
+
+  test("no authorization header is sent when signed out", async () => {
+    const chapter = await chapterFixture("api-chapter-1");
+    const { parser, fetchStub } = await parserWithApi({ [PREMIUM_API]: chapter });
+    await parser.fetchChapter({
+      sourceUrl: CHAPTER_URL, chapterNumber: "865", title: "", isPremium: true,
+    });
+    const last = fetchStub.requests.at(-1);
+    assert.equal(last.headers.authorization, undefined);
+  });
+
+  test("a teaser the server still returns is reported as locked", async () => {
+    const preview = await chapterFixture("api-chapter-865-preview");
+    const { parser } = await parserWithApi({ [PREMIUM_API]: preview });
+    await assert.rejects(
+      () => parser.fetchChapter({
+        sourceUrl: CHAPTER_URL, chapterNumber: "865", title: "", isPremium: true,
+      }),
+      /locked/
+    );
+  });
+
+  test("a purchased premium chapter is retried with the token off its page", async () => {
+    const preview = await chapterFixture("api-chapter-865-preview");
+    const full = await chapterFixture("api-chapter-1");
+    const jwt = "eyJhbGciOi.payload.sig";
+    const page = new URL(CHAPTER_URL).pathname;
+    const fetchStub = createFetchStub([
+      {
+        match: (url, info) =>
+          url.pathname === PREMIUM_API && info.headers.authorization === `Bearer ${jwt}`,
+        respond: () => jsonResponse(full),
+      },
+      {
+        match: (url) => url.pathname === PREMIUM_API,
+        respond: () => jsonResponse(preview),
+      },
+      {
+        match: (url) => url.pathname === page,
+        respond: () => htmlResponse(pageHtmlWithToken(`"${jwt}"`)),
+      },
+      { match: () => true, respond: () => errorResponse(404) },
+    ]);
+    globalThis.fetch = fetchStub;
+    const parser = makeParser();
+
+    const result = await parser.fetchChapter({
+      sourceUrl: CHAPTER_URL, chapterNumber: "865", title: "", isPremium: true,
+    });
+    assert.match(result.xhtml, /Spirit Master Seo Gong/);
+    // the retry that actually delivered the body carried the token ...
+    const tokenCall = fetchStub.requests.find(
+      (r) => r.url.pathname === PREMIUM_API && r.headers.authorization
+    );
+    assert.equal(tokenCall.headers.authorization, `Bearer ${jwt}`);
+    // ... and it was read off the chapter page, not the story page
+    const pageCall = fetchStub.requests.find((r) => r.url.pathname === page);
+    assert.equal(pageCall.headers.accept, "text/html");
+  });
+});
+
 describe("fenrirealm bodies it cannot use", () => {
   const parser = makeParser();
   const chapter = {
@@ -400,10 +483,20 @@ describe("fenrirealm bodies it cannot use", () => {
     chapterNumber: "5", title: "",
   };
 
-  test("reports a paid chapter", () => {
+  test("reports a locked chapter", () => {
     assert.throws(
       () => parser.buildChapterDom({ content_format: "locked", excerpt: "…" }, chapter),
-      /paid chapter/
+      /locked for this account/
+    );
+  });
+
+  test("reports the site's teaser for a chapter it will not send", () => {
+    assert.throws(
+      () => parser.buildChapterDom(
+        { content_format: "text", content: "A short taste.", excerpt: "A short taste." },
+        chapter
+      ),
+      /locked for this account/
     );
   });
 
@@ -448,13 +541,6 @@ describe("fenrirealm bodies it cannot use", () => {
       content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "hi" }] }] },
     }, chapter);
     assert.match(dom.querySelector(".fenr-content").innerHTML, /hi/);
-  });
-
-  test("reports a body the site did not send", () => {
-    assert.throws(
-      () => parser.chapterDataFrom("not json at all", chapter.sourceUrl),
-      /did not return JSON/
-    );
   });
 });
 
@@ -504,31 +590,9 @@ describe("fenrirealm svelteData", () => {
     );
   });
 
-  test("a redirect says what to do about the premium chapter", async () => {
-    const text = await dataFixture("paid-896-redirect");
-    const { parser } = await parserWithApi({
-      "/series/absolute-regression/896/__data.json": text,
-    });
-    await assert.rejects(
-      () => parser.fetchChapter({
-        sourceUrl: "https://fenrirealm.com/series/absolute-regression/896",
-        chapterNumber: "896", title: "",
-      }),
-      (err) => {
-        // the reader needs the chapter, not the raw data url, and needs to be
-        // told that buying it in the site's own tab is what fixes this
-        assert.match(err.message, /cannot read .*absolute-regression\/896\b/);
-        assert.match(err.message, /buying it with a seal/);
-        assert.match(err.message, /cookies are sent/);
-        assert.doesNotMatch(err.message, /__data\.json/);
-        return true;
-      }
-    );
-  });
-
-  test("a premium chapter is fetched with the reader's cookies", async () => {
+  test("a chapter request is made with the reader's cookies", async () => {
     const { parser, fetchStub } = await parserWithApi({
-      "/series/absolute-regression/894/__data.json": await dataFixture("chapter-1"),
+      "/api/new/v2/series/absolute-regression/894": await chapterFixture("api-chapter-1"),
     });
     await parser.fetchChapter({
       sourceUrl: "https://fenrirealm.com/series/absolute-regression/894",

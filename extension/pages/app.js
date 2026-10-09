@@ -20,6 +20,7 @@ import { ImageCollector } from "../core/ImageCollector.js";
 import { EpubBuilder } from "../core/EpubBuilder.js";
 import { ChapterRange } from "../core/ChapterRange.js";
 import { Util } from "../core/Util.js";
+import { installSiteFetchBridge } from "./siteFetch.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -33,6 +34,10 @@ const state = {
 
 document.addEventListener("DOMContentLoaded", async () => {
   $("extensionVersion").textContent = `v${Util.extensionVersion()}`;
+  // Requests to a supported site go through that site's own page so Cloudflare
+  // and the reader's login cookie both see a same-origin request.  This must be
+  // installed before any parser makes a request.
+  installSiteFetchBridge(parserFactory.supportedHostNames());
   wireButtons();
   await openFromUrlParam();
 });

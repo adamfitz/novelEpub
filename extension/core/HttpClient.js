@@ -23,6 +23,29 @@ const DEFAULT_HEADERS = {
   "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
 };
 
+/*
+  Cloudflare marks: the interstitial page that stands in for a challenged
+  request.  Only phrases unique to that interstitial belong here.
+
+  "challenge-platform" and "cf-turnstile" must NOT be listed: Cloudflare
+  injects its bot-detection script and a Turnstile widget into perfectly
+  normal pages, so matching those would reject every real page the site
+  serves.
+*/
+const CLOUDFLARE_CHALLENGE_MARKERS = [
+  "verifying access",
+  "Just a moment",
+  "Checking your browser before accessing",
+  "Enable JavaScript and cookies to continue",
+];
+
+function isCloudflareChallenge(text) {
+  if (!text || typeof text !== "string") return false;
+  // A real chapter or page is large; the interstitial is a small stub.
+  if (text.length > 20000) return false;
+  return CLOUDFLARE_CHALLENGE_MARKERS.some((marker) => text.includes(marker));
+}
+
 export class HttpClient {
   /**
    * @param {object} options
@@ -76,6 +99,19 @@ export class HttpClient {
       }
       const response = await fetch(url, init);
       if (!response.ok) {
+        let errText = "";
+        try {
+          errText = await response.text();
+        } catch (_) {
+          errText = "";
+        }
+        if (isCloudflareChallenge(errText)) {
+          throw new HttpError(
+            `Cloudflare challenge intercepted the request to ${url}. Open the page in your browser, solve the verification if present, and try again.`,
+            response.status || 403,
+            url
+          );
+        }
         throw new HttpError(
           `HTTP ${response.status}${reason(response.status)} for ${url}`,
           response.status,
@@ -92,6 +128,13 @@ export class HttpClient {
   async fetchDom(url, options = {}) {
     const response = await this.fetch(url, options);
     const html = await response.text();
+    if (isCloudflareChallenge(html)) {
+      throw new HttpError(
+        `Cloudflare challenge intercepted the request to ${url}. Open the page in your browser, solve the verification if present, and try again.`,
+        response.status || 403,
+        url
+      );
+    }
     const dom = Util.parseHtml(html);
     if (dom == null) {
       throw new Error(`Failed to parse HTML from ${url}`);
@@ -101,12 +144,56 @@ export class HttpClient {
 
   async fetchJson(url, options = {}) {
     const response = await this.fetch(url, options);
-    return response.json();
+    let text;
+    if (typeof response.text === "function") {
+      text = await response.text();
+    } else if (typeof response.json === "function") {
+      try {
+        return await response.json();
+      } catch (err) {
+        throw new HttpError(
+          `Received non-JSON response from ${url}. The site may be using Cloudflare protection.`,
+          response.status || 0,
+          url
+        );
+      }
+    } else {
+      text = "";
+    }
+    if (isCloudflareChallenge(text)) {
+      throw new HttpError(
+        `Cloudflare challenge intercepted the request to ${url}. Open the page in your browser, solve the verification if present, and try again.`,
+        response.status || 403,
+        url
+      );
+    }
+    try {
+      return JSON.parse(text);
+    } catch (err) {
+      throw new HttpError(
+        `Received non-JSON response from ${url}. The site may be using Cloudflare protection.`,
+        response.status || 0,
+        url
+      );
+    }
   }
 
   async fetchText(url, options = {}) {
     const response = await this.fetch(url, options);
-    return response.text();
+    let text;
+    if (typeof response.text === "function") {
+      text = await response.text();
+    } else {
+      text = "";
+    }
+    if (isCloudflareChallenge(text)) {
+      throw new HttpError(
+        `Cloudflare challenge intercepted the request to ${url}. Open the page in your browser, solve the verification if present, and try again.`,
+        response.status || 403,
+        url
+      );
+    }
+    return text;
   }
 
   async fetchBlob(url, options = {}) {
