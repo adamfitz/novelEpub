@@ -82,19 +82,17 @@ function serverError() {
 }
 
 /*
-  A chapter as the site actually serves it: a SvelteKit `__data.json` body, read
-  as text, with the chapter object reached through devalue's reference table.
+  A chapter as the site actually serves it: a plain JSON chapter object from
+  the chapter API, with the body labelled and encoded according to the site's
+  own format field.
 */
 function chapterData(title, content) {
-  const envelope = {
-    type: "data",
-    nodes: [{ type: "data", data: [{ chapterData: 1 }, { title, content_format: "html", content }] }],
-  };
+  const body = { title, content_format: "html", content };
   return {
     ok: true,
     status: 200,
-    async text() { return JSON.stringify(envelope); },
-    async json() { return envelope; },
+    async text() { return JSON.stringify(body); },
+    async json() { return body; },
   };
 }
 
@@ -453,7 +451,7 @@ describe("creating the EPUB while the site is broken", () => {
       // succeed would hand JSZip a jsdom Blob from a different realm, which is
       // a quirk of the test harness rather than anything the browser does
       if (url.pathname === "/cover.png") return serverError();
-      return url.pathname === "/series/absolute-regression/1/__data.json"
+      return url.pathname === "/api/new/v2/series/absolute-regression/1"
         ? chapterData("Chapter 1", "<p>The rain had not stopped for three days.</p>")
         : serverError();
     });
