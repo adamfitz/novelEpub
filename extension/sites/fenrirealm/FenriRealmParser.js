@@ -29,12 +29,14 @@
 
   The chapter object it carries has a `content` encoded according to
   `content_format`:
-      "text"  plain text, paragraphs separated by a blank line
-      "html"  an HTML fragment
-      "json"  a ProseMirror document tree
+      "text"       plain text, paragraphs separated by a blank line
+      "html"       an HTML fragment
+      "json"       a ProseMirror document tree
+      "encrypted"  an AES-GCM body the reader decrypts with a read token
 
   Both "html" and "json" occur in practice on the same series: older chapters
-  come back as ProseMirror, newer ones as HTML.
+  come back as ProseMirror, newer ones as HTML.  The site now protects free
+  bodies too, so "encrypted" is the usual answer once a read token exists.
 
   A chapter the account may not read comes back as a short teaser instead: a
   "text" body identical to `excerpt`, with `locked.price` above zero.  That is
@@ -51,6 +53,36 @@ import { proseMirrorToHtml } from "./content.js";
 
 const SITE_ORIGIN = "https://fenrirealm.com";
 const CHAPTER_LIST_ENDPOINT = "/api/new/v2/series";
+
+/*
+  The reader's protected bodies.
+
+  The site encrypts a chapter body with AES-GCM and sends the result, plus the
+  metadata needed to undo it, in place of `content`.  The algorithm is the same
+  one the reader script in the site bundle uses:
+
+    - the content is base64 of IV (12 bytes) followed by the ciphertext and its
+      GCM tag (16 bytes);
+    - key = SHA-256 of a label built from the read token, the viewer id carried
+      in the token, the chapter id, and one of the version strings below;
+    - a "fragmented" body arrives as an array of base64 fragments that are put
+      back in order with a Fisher-Yates shuffle seeded by SHA-256 of another
+      label.  The shuffle is over fragment positions, not characters.
+
+  Only "fragmented-v2" is treated differently: it adds the token's viewer id to
+  both labels.  Anything else is the v1 scheme, whose labels have no vid.
+*/
+const FR_CONTENT_V1 = "fr-content-v1";
+const FR_FRAG_V1 = "fr-frag-v1";
+const FR_CONTENT_V2 = "fr-content-v2";
+const FR_FRAG_V2 = "fr-frag-v2";
+const FRAGMENTED_V2 = "fragmented-v2";
+
+const READ_TOKEN_ENDPOINT = "/api/read-token";
+const AES_IV_BYTES = 12;
+const AES_TAG_BYTES = 16;
+/** How long a read token is trusted when the site omits its expiry. */
+const READ_TOKEN_FALLBACK_MS = 5 * 60 * 1000;
 
 /** Marks the element holding a chapter body inside the document we build. */
 const CONTENT_CONTAINER_CLASS = "fenr-content";
@@ -98,6 +130,8 @@ export class FenriRealmParser extends Parser {
     super({ name: "FenrirRealm", minimumThrottle: 500, ...options });
     /** The account JWT read off the story page, or null when signed out. */
     this.authToken = null;
+    /** The site's short lived body decryption token, or null. */
+    this.readToken = null;
   }
 
   get contentSelectorsToRemove() {
@@ -265,21 +299,33 @@ export class FenriRealmParser extends Parser {
       "Accept": "application/json",
       "Cache-Control": "no-cache",
       // the site's reader tells the server it can take protected bodies
-      "X-Accepts-Encrypted-Content": "2",
+      "X-Accepts-Encrypted-Content": "3",
     };
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
-    const data = await this.httpClient.fetchJson(url, {
+    const response = await this.httpClient.fetch(url, {
       credentials: "include",
       headers,
       referer: chapter.sourceUrl,
     });
+    // the server can hand back a fresh body decryption token in the same
+    // response, and the reader uses it before asking /api/read-token
+    this.rememberReadToken(response, chapter);
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
     if (data == null || typeof data !== "object") {
       throw new Error(
         `${url} did not include a chapter object. ` +
         `The site may have changed how it serves chapters.`
       );
+    }
+    if (data.content_format === "encrypted") {
+      data = await this.decryptChapter(data, chapter);
     }
     return data;
   }
@@ -338,6 +384,93 @@ export class FenriRealmParser extends Parser {
     return dom;
   }
 
+  /**
+   * Decode a body the site sent encrypted.
+   *
+   * The reader mints a short lived "read token" before it asks for protected
+   * content, and that token is what keys the body.  The site also accepts a
+   * token from its cookie, which is why opening any chapter in the browser once
+   * is enough for the extension to decrypt later chapters too.
+   */
+  async decryptChapter(data, chapter) {
+    const contentId = data.id ?? chapter?.id ?? null;
+    const token = await this.readTokenFor(contentId);
+    if (token == null) {
+      throw new Error(
+        `${chapter.sourceUrl} sent an encrypted body, but the site would not ` +
+        `issue a reader token. Open a chapter on fenrirealm.com once, finish ` +
+        `its verification if it asks, then try again.`
+      );
+    }
+
+    const scheme = data.content_scheme === FRAGMENTED_V2 ? FRAGMENTED_V2 : "fragmented-v1";
+    const vid = scheme === FRAGMENTED_V2 ? viewerIdFromToken(token) : "";
+    let encoded = data.content;
+    if (Array.isArray(encoded)) {
+      encoded = await unshuffleFragments(encoded, { token, vid, contentId, scheme });
+    } else if (typeof encoded !== "string") {
+      throw new Error(`${chapter.sourceUrl} sent an encrypted body with no content.`);
+    }
+
+    const key = await contentKey(token, vid, contentId, scheme);
+    const plaintext = await decryptBase64AesGcm(encoded, key);
+    if (plaintext == null || plaintext === "") {
+      throw new Error(
+        `${chapter.sourceUrl} sent an encrypted body that could not be decrypted. ` +
+        `The site may have changed its reader again.`
+      );
+    }
+    return { ...data, content: plaintext, content_format: "html" };
+  }
+
+  /** Pick up a read token the site issued on a chapter response. */
+  rememberReadToken(response, chapter) {
+    const value = response.headers?.get("x-read-token-issued");
+    if (typeof value !== "string" || value === "") return;
+    const expires = Number.parseInt(
+      response.headers.get("x-read-token-expires-at") ?? "", 10
+    );
+    this.readToken = {
+      value,
+      expiresAt: Number.isFinite(expires)
+        ? expires * 1000
+        : Date.now() + READ_TOKEN_FALLBACK_MS,
+      chapterId: chapter?.id ?? null,
+    };
+  }
+
+  /** The site's body decryption token, cached until shortly before it expires. */
+  async readTokenFor(chapterId) {
+    const now = Date.now();
+    if (this.readToken != null && this.readToken.expiresAt > now) {
+      const bound = this.readToken.chapterId;
+      if (bound == null || chapterId == null || bound === chapterId) {
+        return this.readToken.value;
+      }
+    }
+    try {
+      const response = await this.httpClient.fetch(`${SITE_ORIGIN}${READ_TOKEN_ENDPOINT}`, {
+        credentials: "include",
+        headers: { "Accept": "application/json" },
+      });
+      const json = await response.json();
+      if (json?.active && typeof json.token === "string" && json.token !== "") {
+        const expiresAt = typeof json.expires_at === "number"
+          ? json.expires_at * 1000
+          : now + READ_TOKEN_FALLBACK_MS;
+        this.readToken = {
+          value: json.token,
+          expiresAt,
+          chapterId: chapterId ?? null,
+        };
+        return json.token;
+      }
+    } catch (err) {
+      // fall through: the caller turns the missing token into a clear error
+    }
+    return null;
+  }
+
   /** Decode the body according to the format the site labelled it with. */
   bodyToHtml(data, chapter) {
     const format = data.content_format ??
@@ -386,6 +519,117 @@ export class FenriRealmParser extends Parser {
     const heading = dom.querySelector("title")?.textContent?.trim();
     if (heading) return heading;
     return chapter.title?.trim() || null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// protected body decoding
+// ---------------------------------------------------------------------------
+
+/** The viewer id (`vid`) the site puts in the first segment of a read token. */
+export function viewerIdFromToken(token) {
+  try {
+    if (!token || typeof token !== "string") return "";
+    const segment = token.split(".")[0] ?? "";
+    if (segment === "") return "";
+    const base64 = segment.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded));
+    return typeof payload.vid === "string" ? payload.vid : "";
+  } catch {
+    return "";
+  }
+}
+
+async function sha256(text) {
+  return globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+}
+
+/**
+ * Undo the site's fragment shuffle.
+ *
+ * `fragments` is the array of base64 pieces the API sent.  The site shuffles
+ * these positions, not the characters inside them, so the permutation must be
+ * built from the number of fragments.
+ */
+async function unshuffleFragments(fragments, { token, vid, contentId, scheme }) {
+  const seed = scheme === FRAGMENTED_V2
+    ? `${token}:${vid}:${contentId}:${FR_FRAG_V2}`
+    : `${token}:${contentId}:${FR_FRAG_V1}`;
+  const order = await permutationOrder(seed, fragments.length);
+  const shuffled = new Array(fragments.length);
+  for (let i = 0; i < fragments.length; i++) {
+    shuffled[order[i]] = fragments[i];
+  }
+  return shuffled.join("");
+}
+
+/**
+ * The fragment order the site derives from a seed.
+ *
+ * Same xorshift32 step and Fisher-Yates loop as the reader script, including
+ * the little-endian split of the first 16 bytes of the SHA-256 digest.
+ */
+async function permutationOrder(seed, length) {
+  if (length < 2) return length === 1 ? [0] : [];
+  const digest = await sha256(seed);
+  const view = new DataView(digest);
+  const state = Uint32Array.of(
+    view.getUint32(0, true),
+    view.getUint32(4, true),
+    view.getUint32(8, true),
+    view.getUint32(12, true)
+  );
+  const order = Array.from({ length }, (_, index) => index);
+  for (let i = length - 1; i > 0; i--) {
+    const j = nextXorShift32(state) % (i + 1);
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return order;
+}
+
+function nextXorShift32(state) {
+  const x = state[0];
+  let r = (x ^ (x << 11)) >>> 0;
+  r = (r ^ (r >>> 8)) >>> 0;
+  const last = state[3];
+  state[0] = state[1];
+  state[1] = state[2];
+  state[2] = last;
+  const next = (last ^ (last >>> 19) ^ r) >>> 0;
+  state[3] = next;
+  return next;
+}
+
+/** The AES-GCM key for a chapter body, derived the way the reader does. */
+async function contentKey(token, vid, contentId, scheme) {
+  const seed = scheme === FRAGMENTED_V2 && vid !== ""
+    ? `${token}:${vid}:${contentId}:${FR_CONTENT_V2}`
+    : `${token}:${contentId}:${FR_CONTENT_V1}`;
+  const digest = await sha256(seed);
+  return globalThis.crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["decrypt"]);
+}
+
+/** Base64 -> IV (12 bytes) + AES-GCM ciphertext, or null when it cannot decode. */
+async function decryptBase64AesGcm(base64, key) {
+  let bytes;
+  try {
+    const binary = atob(base64);
+    bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+  } catch {
+    return null;
+  }
+  if (bytes.length <= AES_IV_BYTES + AES_TAG_BYTES) return null;
+  const iv = bytes.slice(0, AES_IV_BYTES);
+  const ciphertext = bytes.slice(AES_IV_BYTES);
+  try {
+    const plaintext = await globalThis.crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+    return new TextDecoder().decode(plaintext);
+  } catch {
+    return null;
   }
 }
 

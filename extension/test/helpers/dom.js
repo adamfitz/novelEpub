@@ -10,6 +10,7 @@
 */
 
 import { JSDOM } from "jsdom";
+import { webcrypto } from "node:crypto";
 
 /**
  * @param {object} [options]
@@ -24,6 +25,11 @@ export function installDom(options = {}) {
   globalThis.DOMParser = dom.window.DOMParser;
   globalThis.NodeFilter = dom.window.NodeFilter;
   globalThis.HTMLElement = dom.window.HTMLElement;
+  // node --test does not expose WebCrypto as a global, while a real extension
+  // page does, so sites that decrypt bodies need it installed here too
+  if (globalThis.crypto == null) {
+    globalThis.crypto = webcrypto;
+  }
   return dom;
 }
 
