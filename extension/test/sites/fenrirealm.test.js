@@ -23,8 +23,10 @@ const COVER_URL =
 
 before(() => { installDom({ url: STORY_URL }); });
 
-const { FenriRealmParser, seriesSlugFromUrl, chapterPathFor, authTokenFrom } =
-  await import("../../sites/fenrirealm/FenriRealmParser.js");
+const {
+  FenriRealmParser, seriesSlugFromUrl, chapterPathFor, authTokenFrom,
+  viewerIdFromToken,
+} = await import("../../sites/fenrirealm/FenriRealmParser.js");
 const { proseMirrorToHtml } = await import("../../sites/fenrirealm/content.js");
 const { parseDataResponse, unflattenDataNode } =
   await import("../../sites/fenrirealm/svelteData.js");
@@ -48,9 +50,10 @@ function makeParser(options = {}) {
  * A parser on a stubbed network: the saved chapter list and real chapter API
  * captures keyed by their `/api/new/v2/series/.../{number}` path.
  */
-async function parserWithApi(dataByPath = {}, options = {}) {
+async function parserWithApi(dataByPath = {}, options = {}, extraRoutes = []) {
   const list = await readFixtureJson(SITE, "chapters-api.json");
   const fetchStub = createFetchStub([
+    ...extraRoutes,
     {
       match: (url) => /^\/api\/new\/v2\/series\/[^/]+\/chapters$/.test(url.pathname),
       respond: (url) => {
@@ -361,7 +364,7 @@ describe("fenrirealm chapter content, from real captures", () => {
       "https://fenrirealm.com/api/new/v2/series/absolute-regression/855"
     );
     assert.equal(last.headers.accept, "application/json");
-    assert.equal(last.headers["x-accepts-encrypted-content"], "2");
+    assert.equal(last.headers["x-accepts-encrypted-content"], "3");
   });
 
   test("surfaces an http failure", async () => {
@@ -372,6 +375,224 @@ describe("fenrirealm chapter content, from real captures", () => {
         chapterNumber: "7", title: "",
       }),
       /HTTP 404/
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// encrypted bodies, generated with the same algorithm the site's reader uses
+// ---------------------------------------------------------------------------
+
+function readTokenWithViewer(vid) {
+  const payload = Buffer.from(JSON.stringify({ vid })).toString("base64url");
+  return `${payload}.test-signature`;
+}
+
+async function sha256Bytes(text) {
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return new Uint8Array(digest);
+}
+
+function nextXorShift32(state) {
+  const x = state[0];
+  let r = (x ^ (x << 11)) >>> 0;
+  r = (r ^ (r >>> 8)) >>> 0;
+  const last = state[3];
+  state[0] = state[1];
+  state[1] = state[2];
+  state[2] = last;
+  const next = (last ^ (last >>> 19) ^ r) >>> 0;
+  state[3] = next;
+  return next;
+}
+
+async function permutationOrder(seed, length) {
+  if (length < 2) return length === 1 ? [0] : [];
+  const view = new DataView((await sha256Bytes(seed)).buffer);
+  const state = Uint32Array.of(
+    view.getUint32(0, true), view.getUint32(4, true),
+    view.getUint32(8, true), view.getUint32(12, true)
+  );
+  const order = Array.from({ length }, (_, index) => index);
+  for (let i = length - 1; i > 0; i--) {
+    const j = nextXorShift32(state) % (i + 1);
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return order;
+}
+
+/**
+ * Build the payload the API sends for a protected body: AES-GCM encrypt,
+ * base64 it, then split the base64 into fragments and apply the site's
+ * fragment shuffle.
+ */
+async function encryptedChapter({
+  plaintext, token, contentId, scheme = "fragmented-v2", fragmentSize = 10,
+}) {
+  const vid = scheme === "fragmented-v2" ? viewerIdFromToken(token) : "";
+  const keySeed = scheme === "fragmented-v2" && vid !== ""
+    ? `${token}:${vid}:${contentId}:fr-content-v2`
+    : `${token}:${contentId}:fr-content-v1`;
+  const key = await globalThis.crypto.subtle.importKey(
+    "raw", await sha256Bytes(keySeed), { name: "AES-GCM" }, false, ["encrypt"]
+  );
+  const iv = new TextEncoder().encode("0123456789ab");
+  const ciphertext = await globalThis.crypto.subtle.encrypt(
+    { name: "AES-GCM", iv }, key, new TextEncoder().encode(plaintext)
+  );
+  const bytes = new Uint8Array(iv.length + ciphertext.byteLength);
+  bytes.set(iv, 0);
+  bytes.set(new Uint8Array(ciphertext), iv.length);
+  const base64 = Buffer.from(bytes).toString("base64");
+
+  const fragments = [];
+  for (let i = 0; i < base64.length; i += fragmentSize) {
+    fragments.push(base64.slice(i, i + fragmentSize));
+  }
+  const fragSeed = scheme === "fragmented-v2"
+    ? `${token}:${vid}:${contentId}:fr-frag-v2`
+    : `${token}:${contentId}:fr-frag-v1`;
+  const order = await permutationOrder(fragSeed, fragments.length);
+  const shuffled = new Array(fragments.length);
+  // the inverse of the reader's unshuffle: shuffled[i] = plain[order[i]]
+  for (let i = 0; i < fragments.length; i++) {
+    shuffled[i] = fragments[order[i]];
+  }
+  return {
+    id: contentId,
+    title: "Encrypted Chapter",
+    content: shuffled,
+    content_format: "encrypted",
+    content_scheme: scheme,
+    excerpt: null,
+  };
+}
+
+function readTokenRoute(tokenResponse) {
+  return {
+    match: (url) => url.pathname === "/api/read-token",
+    respond: () => jsonResponse(tokenResponse),
+  };
+}
+
+describe("fenrirealm encrypted chapter bodies", () => {
+  const API = "/api/new/v2/series/absolute-regression/900";
+  const CHAPTER_URL = "https://fenrirealm.com/series/absolute-regression/900";
+  const CONTENT_ID = 244266;
+
+  async function fetchEncrypted(body, tokenResponse) {
+    const { parser, fetchStub } = await parserWithApi(
+      { [API]: body },
+      {},
+      [readTokenRoute(tokenResponse)]
+    );
+    const result = await parser.fetchChapter({
+      sourceUrl: CHAPTER_URL, chapterNumber: "900", title: "",
+    });
+    return { ...result, fetchStub };
+  }
+
+  test("the token's first segment carries the viewer id", () => {
+    assert.equal(viewerIdFromToken(readTokenWithViewer("viewer-1")), "viewer-1");
+    assert.equal(viewerIdFromToken("eyJhbGciOi.payload.sig"), "");
+    assert.equal(viewerIdFromToken(null), "");
+  });
+
+  test("decrypts a fragmented-v2 body after unshuffling its fragments", async () => {
+    const token = readTokenWithViewer("viewer-1");
+    const body = await encryptedChapter({
+      plaintext: "<p>Hello from the encrypted reader.</p>",
+      token, contentId: CONTENT_ID,
+    });
+    const { xhtml, fetchStub } = await fetchEncrypted(body, {
+      active: true, token, expires_at: Math.floor(Date.now() / 1000) + 300,
+    });
+    assert.ok(isWellFormedXml(xhtml), xmlParseError(xhtml));
+    assert.match(xhtml, /Hello from the encrypted reader\./);
+    const tokenCall = fetchStub.requests.find((r) => r.url.pathname === "/api/read-token");
+    assert.equal(tokenCall.credentials, "include");
+  });
+
+  test("uses the v1 labels when the site did not label the scheme v2", async () => {
+    const token = readTokenWithViewer("viewer-1");
+    const body = await encryptedChapter({
+      plaintext: "<p>An older protected chapter.</p>",
+      token, contentId: CONTENT_ID, scheme: "fragmented-v1",
+    });
+    const { xhtml } = await fetchEncrypted(body, {
+      active: true, token, expires_at: Math.floor(Date.now() / 1000) + 300,
+    });
+    assert.match(xhtml, /An older protected chapter\./);
+  });
+
+  test("a plain encrypted string needs no unshuffle", async () => {
+    const token = readTokenWithViewer("viewer-2");
+    const body = await encryptedChapter({
+      plaintext: "<p>A single encrypted blob.</p>",
+      token, contentId: CONTENT_ID, fragmentSize: 100_000,
+    });
+    // a string body is already the complete base64, not shuffled fragments
+    body.content = body.content.join("");
+    const { xhtml } = await fetchEncrypted(body, {
+      active: true, token, expires_at: Math.floor(Date.now() / 1000) + 300,
+    });
+    assert.match(xhtml, /A single encrypted blob\./);
+  });
+
+  test("uses a token the chapter response itself issues", async () => {
+    const token = readTokenWithViewer("viewer-3");
+    const body = await encryptedChapter({
+      plaintext: "<p>Issued with the chapter.</p>",
+      token, contentId: CONTENT_ID,
+    });
+    const issuedRoute = {
+      match: (url) => url.pathname === API,
+      respond: () => {
+        const response = jsonResponse(body);
+        response.headers.set("x-read-token-issued", token);
+        response.headers.set(
+          "x-read-token-expires-at", String(Math.floor(Date.now() / 1000) + 300)
+        );
+        return response;
+      },
+    };
+    const { parser, fetchStub } = await parserWithApi({}, {}, [
+      issuedRoute,
+      readTokenRoute({ active: false }),
+    ]);
+    const { xhtml } = await parser.fetchChapter({
+      sourceUrl: CHAPTER_URL, chapterNumber: "900", title: "",
+    });
+    assert.match(xhtml, /Issued with the chapter\./);
+    assert.equal(
+      fetchStub.requests.some((r) => r.url.pathname === "/api/read-token"),
+      false,
+      "the issued token should be used before asking for another"
+    );
+  });
+
+  test("reports clearly when the site will not issue a reader token", async () => {
+    const token = readTokenWithViewer("viewer-1");
+    const body = await encryptedChapter({
+      plaintext: "<p>Secret.</p>", token, contentId: CONTENT_ID,
+    });
+    await assert.rejects(
+      () => fetchEncrypted(body, { active: false }),
+      /would not issue a reader token/
+    );
+  });
+
+  test("reports a body that cannot be decrypted instead of writing garbage", async () => {
+    const token = readTokenWithViewer("viewer-1");
+    const body = await encryptedChapter({
+      plaintext: "<p>Secret.</p>", token, contentId: CONTENT_ID,
+    });
+    body.content = body.content.map(() => Buffer.from("not ciphertext").toString("base64"));
+    await assert.rejects(
+      () => fetchEncrypted(body, {
+        active: true, token, expires_at: Math.floor(Date.now() / 1000) + 300,
+      }),
+      /could not be decrypted/
     );
   });
 });
